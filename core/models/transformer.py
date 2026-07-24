@@ -140,21 +140,47 @@ class MiniLLM(nn.Module):
         return logits, new_kvs
     
     @torch.no_grad()
-    def generate(self, prompt, max_new_tokens=50, temperature=1.0):
-        """自回归生成使用 KV Cache"""
-        logits, past_kvs = self.forward(prompt)
-        next_token = self._sample(logits[:, -1], temperature)
-        generated = [next_token]
+    def generate(self, prompt, max_new_tokens=50, temperature=1.0, top_p=None,
+                 use_cache=True):
+        """自回归生成"""
+        if use_cache:
+            # KV Cache 模式：每步只传 1 个新 token
+            logits, past_kvs = self.forward(prompt)
+            next_token = self._sample(logits[:, -1], temperature, top_p)
+            generated = [next_token]
+            for _ in range(max_new_tokens - 1):
+                logits, past_kvs = self.forward(next_token, past_kvs)
+                next_token = self._sample(logits[:, -1], temperature, top_p)
+                generated.append(next_token)
+            return torch.cat([prompt] + generated, dim=1)
+        else:
+            # 无缓存模式：每步传完整序列（O(n²)）
+            full_seq = prompt
+            for _ in range(max_new_tokens):
+                logits, _ = self.forward(full_seq)
+                next_token = self._sample(logits[:, -1], temperature, top_p)
+                full_seq = torch.cat([full_seq, next_token], dim=1)
+            return full_seq
 
-        for _ in range(max_new_tokens - 1):
-            logits, past_kvs = self.forward(next_token, past_kvs)
-            next_token = self._sample(logits[:, -1], temperature)
-            generated.append(next_token)
+    def top_p_filter(self, logits, top_p=0.9):
+        """top-p nucleus filtering — 至少保留概率最高的 token"""
+        sorted_logits, sorted_indices = torch.sort(logits, descending=True, dim=-1)
+        cumulative_probs = torch.cumsum(F.softmax(sorted_logits, dim=-1), dim=-1)
+        # 累积超过 top_p 的删掉，但第一个越界的保留（右移一位）
+        mask = cumulative_probs > top_p
+        mask[..., 1:] = mask[..., :-1].clone()
+        mask[..., 0] = False
+        sorted_logits[mask] = float('-inf')
+        return sorted_logits.scatter(-1, sorted_indices, sorted_logits)
 
-        return torch.cat([prompt] + generated, dim=1)
-
-    def _sample(self, logits, temperature):
+    def _sample(self, logits, temperature, top_p=None):
+        # 清理异常值
+        logits = torch.nan_to_num(logits, nan=-1e4, posinf=1e4, neginf=-1e4)
+        if temperature > 0:
+            logits = logits / temperature
+        if top_p is not None and top_p < 1.0:
+            logits = self.top_p_filter(logits, top_p)
         if temperature == 0:
             return logits.argmax(dim=-1, keepdim=True)
-        probs = F.softmax(logits / temperature, dim=-1)
+        probs = F.softmax(logits, dim=-1)
         return torch.multinomial(probs, 1)

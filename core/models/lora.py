@@ -37,9 +37,7 @@ class LoRALinear(nn.Module):
     def bias(self):
         return self.linear.bias
 
-
 def apply_lora_to_model(model, r=8, alpha=16, target_names=None):
-    """把 target_names 里的 nn.Linear 替换成 LoRALinear，冻结原参"""
     if target_names is None:
         target_names = ['q_proj', 'k_proj', 'v_proj', 'out_proj']
 
@@ -54,7 +52,9 @@ def apply_lora_to_model(model, r=8, alpha=16, target_names=None):
         parent = model
         for part in parts[:-1]:
             parent = getattr(parent, part)
-        setattr(parent, parts[-1], lora_module)
+        old_module = getattr(parent, parts[-1])
+        device = old_module.weight.device
+        setattr(parent, parts[-1], lora_module.to(device))
 
     for name, param in model.named_parameters():
         if '.A' not in name and '.B' not in name:
