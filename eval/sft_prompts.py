@@ -66,16 +66,31 @@ def main():
     tokenizer = Tokenizer.from_file("data/pretrain_clean/tokenizer.json")
     print(f"Device: {device}")
 
-    # pretrain
+    # Pretrain
     evaluate_model(
         load_model("out/pretrain/ckpt.pt", model_cfg, device),
         tokenizer, device, "Pretrain Checkpoint"
     )
 
-    # SFT
+    # SFT 全参
     evaluate_model(
         load_model("out/sft/final.pt", model_cfg, device),
-        tokenizer, device, "SFT Checkpoint"
+        tokenizer, device, "SFT (Full) Checkpoint"
+    )
+
+    # SFT LoRA (需要先 merge)
+    import core.models.lora as lora_mod
+    lora_model = load_model("out/pretrain/ckpt.pt", model_cfg, device)
+    lora_mod.apply_lora_to_model(lora_model, r=8, alpha=16)
+    ckpt = torch.load("out/sft_lora/final.pt", map_location="cpu")
+    lora_model.load_state_dict(ckpt['model'], strict=False)
+    lora_mod.merge_lora(lora_model)
+    evaluate_model(lora_model, tokenizer, device, "SFT LoRA (r=8)")
+
+    # DPO (管线已跑通，数据为模拟)
+    evaluate_model(
+        load_model("out/dpo/final.pt", model_cfg, device),
+        tokenizer, device, "DPO (simulated data)"
     )
 
 

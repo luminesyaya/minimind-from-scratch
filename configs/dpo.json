@@ -1,0 +1,30 @@
+{
+  "model": {
+    "vocab_size": 6400,
+    "dim": 512,
+    "num_q_heads": 8,
+    "num_kv_heads": 4,
+    "num_layers": 8,
+    "max_seq_len": 512
+  },
+  "training": {
+    "batch_size": 8,
+    "max_steps": 500,
+    "warmup_steps": 50,
+    "lr": 1e-5,
+    "min_lr_ratio": 0.1,
+    "weight_decay": 0.01,
+    "grad_clip": 1.0,
+    "beta": 0.1,
+    "log_every": 20,
+    "eval_every": 100,
+    "save_every": 200,
+    "out_dir": "out/dpo",
+    "ref_ckpt": "out/sft/final.pt"
+  },
+  "data": {
+    "train_path": "data/minimind_sft/sft_clean/train_sft.bin",
+    "valid_path": "data/minimind_sft/sft_clean/valid_sft.bin",
+    "meta_path": "data/minimind_sft/sft_clean/sft_meta.json"
+  }
+}
